@@ -65,6 +65,25 @@ _n_cmp:
 	mov	eax, 1
 	ret
 
+_update_targets:
+	pusha
+	mov	ecx, 5500
+	mov	esi, world + 5500
+
+.loop:
+	cmp	[esi], byte '*'
+	jne	.next
+.move:
+	mov	[esi], byte ' '
+	add	esi, 120
+	mov	[esi], byte '*'
+	sub	esi, 120
+.next:
+	dec	esi
+	loop	.loop
+	popa
+	ret
+
 ; render screen
 _render:
 	pusha
@@ -89,15 +108,34 @@ _render:
 
 	add	edi, eax
 
-	add	edi, [playerX]		
+	add	edi, [playerX]
+
+	; see if player is hitting a target if so add to score
+	pusha
+	add	edi, 1
+
+	cmp	[edi - 120], byte '*'
+	je	.s_add
+
+	cmp	[edi], byte '*'
+	je	.s_add
+
+	jmp	.s_end
+
+.s_add:
+	add	[score], dword 50
+.s_end:
+	sub	edi, 1
+	popa
+	; end score calc
 
 	mov	esi, player
-	mov	ecx, player_len
+	mov	ecx, 3
+	pusha
 .loop:
 	movsb
-	inc	esi
-	inc	edi
 	loop	.loop
+	popa
 
 	; Print screen
 	mov	ecx, screen

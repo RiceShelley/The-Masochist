@@ -10,6 +10,7 @@ section .data
 	new_line:	db  0xA
 	input:		db '//dev/input/event3', 0
 	logo:		db './start_screen', 0
+	lvl:		db './lvl_map', 0
 	src0:		db './src_code_blob', 0
 	world_file:	db './world_res', 0
 	world_len:	equ 6000
@@ -18,22 +19,30 @@ section .data
 	timeval:	
 		t_sec 	dd 0
 		t_usec 	dd 0
-	player:		db '#u###', 0
-	player_len:	equ 3
-	fmtStr:		db "printf: value - %d", 0xA, 0
+	player:		db '#####', 0
+	target:		db '***', 0
+	fmtStr:		db "Score: %d", 0xA, 0
 	start_str:	db "Game Loader...", 0xA, "type help for options.", 0xA, 0
 	start_str_len:	equ $ - start_str
 	prompt:		db "> ", 0
 	run_game:	db "run", 0
 	loading_g	db "Loading game...", 0xA, 0
 	loading_g_len	equ $ - loading_g
+	; Keys usr can press to move paddle
+	keys		db 0x11, 0x12, 0x13, 0x16, 0x17, 0x18
+	p_pos		db 4, 26, 47, 68, 89, 109
 
 section .bss
 	screen:		resb world_len
 	world:		resb world_len
 	buff:		resb 32768
+	lvl_buff:	resb 2048
 	playerX:	resb 8
 	playerY:	resb 8
+	score:		resb 8
+	act_tar:	resb 4
+	render_cyc:	resb 4
+	spawn_cyc:	resb 4
 	key_buf:	resb 512
 	fd_in:		resb 8
 	key_in:		resb 8
@@ -48,8 +57,6 @@ section .text
 
 ; start game at menu
 main:
-	jmp	_start_game
-
 	call	_clear_screen
 
 	mov	ecx, start_str
@@ -85,6 +92,8 @@ main:
 
 ; Start game
 _start_game:
+	
+	mov	[act_tar], byte 0
 
 	mov	ecx, loading_g
 	mov	edx, loading_g_len
@@ -104,6 +113,8 @@ _start_game:
 	; load resources 
 	call	_load_start_screen
 	call	_load_world
+	call	_load_lvl
+	call	_open_input
 
 	jmp	_game_loop
 
@@ -123,12 +134,12 @@ _print_f:
 	popa
 	ret
 
-_read_input:
-	
+_open_input:
+
 	pusha
 	mov	eax, 5
 	mov	ebx, input
-	mov	ecx, 0
+	mov	ecx, 4000
 	int	0x80
 
 	mov	[key_in], eax
@@ -139,8 +150,20 @@ _read_input:
 	mov 	edx, 32
 	int	0x80
 
-	mov	eax, 6
+	mov	eax, 0
+	mov	ax, word [key_buf + 26]
+	mov	[key], ax
+	
+	popa
+	ret
+
+_read_input:
+	pusha	
+
+	mov	eax, 3
 	mov	ebx, [key_in]
+	mov	ecx, key_buf
+	mov 	edx, 32
 	int	0x80
 
 	mov	eax, 0
@@ -155,25 +178,73 @@ _read_input:
 _game_loop:
 
 	mov	eax, 0
-	mov	ebx, 300
+	mov	ebx, 5000000
 	call	_sleep
 
-	call	_new_line
+	mov	eax, [render_cyc]
+	add	[render_cyc], dword 1
+
+	cmp	eax, 10
+	jne	.do_keys
 
 	; Clear and render console game screen
-	mov	ecx, 10
+.render:
+	mov	[render_cyc], byte 0
+	call	_new_line
+	mov	ecx, 7
+
 .clear_loop:
 	call	_new_line
 	loop	.clear_loop
 
-	; print out player x / y
-	mov	eax, [playerX]
+	mov	eax, [score]
 	call	_print_f
-	mov	eax, [playerY]
-	call	_print_f
+
+	mov	eax, [spawn_cyc]
+	add	[spawn_cyc], dword 1
+
+	cmp	eax, 5
+	jne	.spawn_end
+
+.spawn:
+	; spawn tagets
+
+	mov	[spawn_cyc], byte 0
+
+	; get number 0 - 6 from lvl file
+	mov	esi, lvl_buff
+	add	esi, [act_tar]
+	mov	eax, 0
+	mov	al, byte [esi]
+	sub	al, '0'
+	cmp	al, 6
+	je	.rest	
+
+	; associate that number 0 - 6 with its corresponding collum 
+	mov	esi, p_pos
+	add	esi, eax
+	mov	eax, 0
+	mov	al, byte [esi]
+	inc	eax
+
+	; write target into world
+	mov	edi, world
+	mov	esi, target
+	add	edi, 120
+	add	edi, eax
+	movsb
+
+.rest:
+	; increment active target
+	add	[act_tar], byte 1
+
+.spawn_end:
+
+	call	_update_targets
 
 	call	_render
 
+.do_keys:
 	; read user input from /dev/input/event
 	call	_read_input
 
@@ -186,38 +257,69 @@ _game_loop:
 	; if ESC down exit game
 	cmp	eax, 1
 	je	_sys_exit			
-
-	; if player move right
-	cmp	eax, 106
-	je	.move_right
-
-	cmp	eax, 105
-	je	.move_left
-
-	cmp	eax, 103
-	je	.move_up
-
-	cmp	eax, 108
-	je	.move_down
-
-	jmp	.end_key_eval
-
-.move_right:
-	add	[playerX], byte 1
-	jmp	.end_key_eval
-
-.move_left:
-	sub	[playerX], byte 1
-	jmp	.end_key_eval
-
-.move_up:
-	sub	[playerY], byte 1
-	jmp	.end_key_eval
-
-.move_down:
-	add	[playerY], byte 1
-	jmp	.end_key_eval
 	
+	mov	ebx, 0
+	mov	bl, byte [keys]
+	cmp	eax, ebx
+	je	.key0
+
+	mov	ebx, 0
+	mov	bl, byte [keys + 1]
+	cmp	eax, ebx
+	je	.key1
+
+	mov	ebx, 0
+	mov	bl, byte [keys + 2]
+	cmp	eax, ebx
+	je	.key2
+
+	mov	ebx, 0
+	mov	bl, byte [keys + 3]
+	cmp	eax, ebx
+	je	.key3
+
+	mov	ebx, 0
+	mov	bl, byte [keys + 4]
+	cmp	eax, ebx
+	je	.key4
+
+	mov	ebx, 0
+	mov	bl, byte [keys + 5]
+	cmp	eax, ebx
+	je	.key5
+
+	jmp	.end_key_eval
+
+.key0:
+	mov	al, byte [p_pos]
+	mov	[playerX], al
+	jmp	.end_key_eval
+
+.key1:
+	mov	al, byte [p_pos + 1]
+	mov	[playerX], al
+	jmp	.end_key_eval
+
+.key2:
+	mov	al, byte [p_pos + 2]
+	mov	[playerX], al
+	jmp	.end_key_eval
+
+.key3:
+	mov	al, byte [p_pos + 3]
+	mov	[playerX], al
+	jmp	.end_key_eval
+
+.key4:
+	mov	al, byte [p_pos + 4]
+	mov	[playerX], al
+	jmp	.end_key_eval
+
+.key5:
+	mov	al, byte [p_pos + 5]
+	mov	[playerX], al
+	jmp	.end_key_eval
+
 .end_key_eval:
 
 	; Loop
@@ -228,7 +330,8 @@ _sleep:
 	pusha
 	mov	dword [t_sec], eax
 	mov	dword [t_usec], ebx
-	mov	eax, 162
+
+	mov	eax, 0xA2
 	mov	ebx, timeval
 	mov	ecx, 0
 	int	0x80
@@ -258,6 +361,28 @@ _load_world:
 	mov	eax, 6
 	mov	ebx, [fd_in]
 	int	0x80
+	popa
+	ret
+
+_load_lvl:
+	pusha
+
+	mov	eax, 5
+	mov	ebx, lvl
+	mov	ecx, 0
+	int	0x80
+	
+	mov	[fd_in], eax
+	mov	eax, 3
+	mov	ebx, [fd_in]
+	mov	ecx, lvl_buff
+	mov	edx, 2048
+	int	0x80
+
+	mov	eax, 6
+	mov	ebx, [fd_in]
+	int	0x80
+
 	popa
 	ret
 
@@ -412,6 +537,25 @@ _n_cmp:
 	mov	eax, 1
 	ret
 
+_update_targets:
+	pusha
+	mov	ecx, 5500
+	mov	esi, world + 5500
+
+.loop:
+	cmp	[esi], byte '*'
+	jne	.next
+.move:
+	mov	[esi], byte ' '
+	add	esi, 120
+	mov	[esi], byte '*'
+	sub	esi, 120
+.next:
+	dec	esi
+	loop	.loop
+	popa
+	ret
+
 ; render screen
 _render:
 	pusha
@@ -436,15 +580,34 @@ _render:
 
 	add	edi, eax
 
-	add	edi, [playerX]		
+	add	edi, [playerX]
+
+	; see if player is hitting a target if so add to score
+	pusha
+	add	edi, 1
+
+	cmp	[edi - 120], byte '*'
+	je	.s_add
+
+	cmp	[edi], byte '*'
+	je	.s_add
+
+	jmp	.s_end
+
+.s_add:
+	add	[score], dword 50
+.s_end:
+	sub	edi, 1
+	popa
+	; end score calc
 
 	mov	esi, player
-	mov	ecx, player_len
+	mov	ecx, 3
+	pusha
 .loop:
 	movsb
-	inc	esi
-	inc	edi
 	loop	.loop
+	popa
 
 	; Print screen
 	mov	ecx, screen

@@ -19,6 +19,28 @@ _load_world:
 	popa
 	ret
 
+_load_lvl:
+	pusha
+
+	mov	eax, 5
+	mov	ebx, lvl
+	mov	ecx, 0
+	int	0x80
+	
+	mov	[fd_in], eax
+	mov	eax, 3
+	mov	ebx, [fd_in]
+	mov	ecx, lvl_buff
+	mov	edx, 2048
+	int	0x80
+
+	mov	eax, 6
+	mov	ebx, [fd_in]
+	int	0x80
+
+	popa
+	ret
+
 _scroll_src:
 	pusha
 
