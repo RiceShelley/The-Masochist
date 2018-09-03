@@ -18,7 +18,7 @@ section .data
 	timeval:	
 		t_sec 	dd 0
 		t_usec 	dd 0
-	player:		db '#u###', 0
+	player:		db '####', 0
 	player_len:	equ 3
 	fmtStr:		db "printf: value - %d", 0xA, 0
 	start_str:	db "Game Loader...", 0xA, "type help for options.", 0xA, 0
