@@ -67,8 +67,8 @@ _n_cmp:
 
 _update_targets:
 	pusha
-	mov	ecx, 5500
-	mov	esi, world + 5500
+	mov	ecx, 5550
+	mov	esi, world + 5550
 
 .loop:
 	cmp	[esi], byte '*'

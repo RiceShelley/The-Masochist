@@ -6,4 +6,4 @@ echo "" >> src_code_blob
 cat loader.asm >> src_code_blob
 echo "" >> src_code_blob
 cat screen.asm >> src_code_blob
-echo "Done."
+echo "Generated src code blob."
