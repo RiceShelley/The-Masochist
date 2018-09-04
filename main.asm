@@ -22,10 +22,19 @@ section .data
 	player:		db '#####', 0
 	target:		db '***', 0
 	fmtStr:		db "Score: %d", 0xA, 0
-	start_str:	db "Game Loader...", 0xA, "type help for options.", 0xA, 0
+	start_str:	db "Game Loader...", 0xA, "Type help for options.", 0xA, 0
 	start_str_len:	equ $ - start_str
+	help_d:		db "Controls: ", 0xA, "Paddle movement: w, e, r, u, i, o | try to hit the *'s", 0xA, "Type run to begin game", 0xA, "Type about for game info", 0xA, "Type exit to quit", 0xA, 0xA, 0
+	help_d_len:	equ $ - help_d
+	about_d:	db "The masochist is a timing based terminal game", 0xA, "written for linux in 32 bit asm", 0xA, 0xA, 0
+	about_d_len:	equ $ - about_d
+	end_p:		db "Press enter to restart game", 0xA, 0
+	end_p_len:	equ $ - end_p
 	prompt:		db "> ", 0
 	run_game:	db "run", 0
+	help_p:		db "help", 0
+	about_p:	db "about", 0
+	exit_p:		db "exit", 0
 	loading_g	db "Loading game...", 0xA, 0
 	loading_g_len	equ $ - loading_g
 	; Keys usr can press to move paddle
@@ -62,9 +71,39 @@ main:
 	mov	ecx, start_str
 	mov	edx, start_str_len
 	call	_print_line
+	jmp	restart_end
+
+restart:
+	call	_clear_screen
+
+	mov	ecx, end_p
+	mov	edx, end_p_len
+	call	_print_line
+
+	; get user input
+	mov	eax, 3
+	mov	ebx, 0
+	mov	ecx, usr_in
+	mov	edx, 128	
+	int	0x80
+
+restart_end:
 
 ; run repeating menu dialog
 .start_d:
+
+	mov	eax, dword [score]
+	cmp	eax, 0
+	je	.pscore_end
+
+.print_score:	
+	mov	eax, [score]
+	call	_print_f
+
+	mov	[score], dword 0
+
+.pscore_end:
+
 	mov	eax, 4
 	mov	ebx, 1
 	mov	ecx, prompt
@@ -72,7 +111,6 @@ main:
 	int	0x80
 
 	; get user input
-
 	mov	eax, 3
 	mov	ebx, 0
 	mov	ecx, usr_in
@@ -88,6 +126,44 @@ main:
 	cmp	eax, 0
 	je	_start_game
 
+	; if user types help
+	mov	ecx, 4
+	mov	esi, usr_in
+	mov	edi, help_p
+	call	_n_cmp
+
+	cmp	eax, 0
+	je	.help
+
+	; if user types about
+	mov	ecx, 5
+	mov	esi, usr_in
+	mov	edi, about_p
+	call	_n_cmp
+
+	cmp	eax, 0
+	je	.about
+
+	; if user types exit
+	mov	ecx, 4
+	mov	esi, usr_in
+	mov	edi, exit_p
+	call	_n_cmp
+
+	cmp	eax, 0
+	je	_sys_exit
+
+	jmp	.start_d
+.help:
+	mov	ecx, help_d
+	mov	edx, help_d_len
+	call	_print_line
+	jmp	.start_d
+
+.about:
+	mov	ecx, about_d
+	mov	edx, about_d_len
+	call	_print_line
 	jmp	.start_d
 
 ; Start game
@@ -217,8 +293,12 @@ _game_loop:
 	mov	eax, 0
 	mov	al, byte [esi]
 	sub	al, '0'
+
 	cmp	al, 6
-	je	.rest	
+	je	.rest
+
+	cmp	al, 9
+	je	restart
 
 	; associate that number 0 - 6 with its corresponding collum 
 	mov	esi, p_pos
