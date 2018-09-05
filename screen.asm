@@ -67,13 +67,13 @@ _n_cmp:
 
 _update_targets:
 	pusha
-	mov	ecx, 5550
-	mov	esi, world + 5550
+	mov	ecx, 5630
+	mov	esi, world + 5630
 
 .loop:
 	cmp	[esi], byte '*'
 	jne	.next
-.move:
+	
 	mov	[esi], byte ' '
 	add	esi, 120
 	mov	[esi], byte '*'
@@ -81,6 +81,19 @@ _update_targets:
 .next:
 	dec	esi
 	loop	.loop
+
+	; clear * at bottom
+	mov	ecx, 200
+	mov	esi, world + 5640
+.loop2:
+	cmp	[esi], byte '*'
+	jne	.next2
+	mov	[esi], byte ' '
+
+.next2:
+	inc	esi
+	loop	.loop2
+	
 	popa
 	ret
 
