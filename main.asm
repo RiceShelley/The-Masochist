@@ -8,7 +8,7 @@ extern printf
 
 section .data
 	new_line:	db  0xA
-	input:		db '//dev/input/event3', 0
+	deviceP_file:	db './input_device', 0
 	logo:		db './start_screen', 0
 	lvl:		db './lvl_map', 0
 	src0:		db './src_code_blob', 0
@@ -44,6 +44,7 @@ section .data
 section .bss
 	screen:		resb world_len
 	world:		resb world_len
+	device_path:	resb 256
 	buff:		resb 32768
 	lvl_buff:	resb 2048
 	playerX:	resb 8
@@ -68,9 +69,13 @@ section .text
 main:
 	call	_clear_screen
 
+	call	_load_device
+	call	_new_line
+
 	mov	ecx, start_str
 	mov	edx, start_str_len
 	call	_print_line
+
 	jmp	restart_end
 
 restart:
@@ -214,7 +219,7 @@ _open_input:
 
 	pusha
 	mov	eax, 5
-	mov	ebx, input
+	mov	ebx, device_path
 	mov	ecx, 4000
 	int	0x80
 

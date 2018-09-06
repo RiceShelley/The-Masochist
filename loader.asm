@@ -19,6 +19,47 @@ _load_world:
 	popa
 	ret
 
+_load_device:
+	pusha
+
+	mov	eax, 5
+	mov	ebx, deviceP_file
+	mov	ecx, 0
+	int	0x80
+
+	mov	[fd_in], eax	
+	mov	eax, 3
+	mov	ebx, [fd_in]
+	mov	ecx, device_path
+	mov	edx, 256
+	int	0x80
+
+	mov	eax, 6
+	mov	ebx, [fd_in]
+	int	0x80
+
+	mov	ecx, device_path
+	mov	edx, 100
+	call	_print_line
+
+	; get rid of new line
+	mov	esi, device_path
+	mov	ecx, 256
+
+.loop:
+	cmp	[esi], byte 0xA
+	jne	.next
+	mov	[esi], byte 0
+	jmp	.end
+
+.next:
+	inc	esi
+	loop	.loop
+
+.end:
+	popa
+	ret
+
 _load_lvl:
 	pusha
 
@@ -123,4 +164,3 @@ _load_start_screen:
 	
 	popa
 	ret
-	
