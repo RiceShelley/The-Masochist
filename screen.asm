@@ -1,11 +1,26 @@
 ; Output line feed 
+extern _printf
+
+; put dd in eax
+_print_score:
+	pushad
+	
+	push	eax
+	push	dword fmtStr
+	call	_printf
+	add	esp, 8
+
+	popad
+	ret
+
 _new_line:
 	pusha
-	mov	eax, 4
-	mov	ebx, 1
+	;mov	eax, 4
+	;mov	ebx, 1
 	mov	ecx, new_line
-	mov	edx, 1
-	int	0x80
+	call _print_line
+	;mov	edx, 1
+	;int	0x80
 	popa
 	ret
 
@@ -24,9 +39,9 @@ _clear_screen:
 ; n -> edx, addr of first char in ecx
 _print_line:
 	pusha
-	mov	eax, 4
-	mov	ebx, 1
-	int	0x80
+	push ecx
+	call _printf
+	add esp, 4
 	popa
 	ret
 

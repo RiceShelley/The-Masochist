@@ -4,21 +4,22 @@
 
 %define KEYB_LEN 24
 
-extern printf
+global _main
+
+extern _exit, _gets
+extern Sleep, GetAsyncKeyState
 
 section .data
-	new_line:	db  0xA
+	new_line:	db  0xA, 0
 	input:		db '//dev/input/event3', 0
 	logo:		db './start_screen', 0
 	lvl:		db './lvl_map', 0
 	src0:		db './src_code_blob', 0
+	open_type:	db 'rw', 0
 	world_file:	db './world_res', 0
 	world_len:	equ 6000
 	world_w:	db 120
 	testb:		db '1234', 0
-	timeval:	
-		t_sec 	dd 0
-		t_usec 	dd 0
 	player:		db '#####', 0
 	target:		db '***', 0
 	fmtStr:		db "Score: %d", 0xA, 0
@@ -38,7 +39,7 @@ section .data
 	loading_g	db "Loading game...", 0xA, 0
 	loading_g_len	equ $ - loading_g
 	; Keys usr can press to move paddle
-	keys		db 0x11, 0x12, 0x13, 0x16, 0x17, 0x18
+	keys		db 0x57, 0x45, 0x52, 0x55, 0x49, 0x4f
 	p_pos		db 4, 26, 47, 68, 89, 109
 
 section .bss
@@ -54,38 +55,32 @@ section .bss
 	spawn_cyc:	resb 4
 	key_buf:	resb 512
 	fd_in:		resb 8
-	key_in:		resb 8
-	key:		resb 8
 	usr_in:		resb 128
 
 ; REMINDER the six registers used to store arugments of Linux kernal 
 ; sys calls are EBX, ECX, EDX, ESI, EDI, and EBP
 ; sys call refs on syscalls.kernelgrok.com
 section .text
-	global main
 
 ; start game at menu
-main:
+_main:
 	call	_clear_screen
 
 	mov	ecx, start_str
-	mov	edx, start_str_len
 	call	_print_line
+
 	jmp	restart_end
 
 restart:
 	call	_clear_screen
 
 	mov	ecx, end_p
-	mov	edx, end_p_len
 	call	_print_line
 
 	; get user input
-	mov	eax, 3
-	mov	ebx, 0
-	mov	ecx, usr_in
-	mov	edx, 128	
-	int	0x80
+	push usr_in
+	call _gets
+	add esp, 4
 
 restart_end:
 
@@ -98,24 +93,19 @@ restart_end:
 
 .print_score:	
 	mov	eax, [score]
-	call	_print_f
+	call	_print_score
 
 	mov	[score], dword 0
 
 .pscore_end:
 
-	mov	eax, 4
-	mov	ebx, 1
 	mov	ecx, prompt
-	mov	edx, 2
-	int	0x80
+	call _print_line
 
 	; get user input
-	mov	eax, 3
-	mov	ebx, 0
-	mov	ecx, usr_in
-	mov	edx, 128	
-	int	0x80
+	push usr_in
+	call _gets
+	add esp, 4
 
 	; see if user typed run
 	mov	ecx, 3
@@ -176,8 +166,7 @@ _start_game:
 	call	_print_line
 
 	; a tastfull pause to build suspense 
-	mov	eax, 1
-	mov	ebx, 0
+	mov	eax, 1000
 	call	_sleep
 
 	; scroll source code
@@ -186,75 +175,51 @@ _start_game:
 	mov	[playerX], byte 4
 	mov	[playerY], byte 45
 
-	; load resources 
-	call	_load_start_screen
-	call	_load_world
-	call	_load_lvl
-	call	_open_input
+	; ---	load resources
+	; Load logo
+	push world_len
+	push screen
+	push logo
+	call _load_file
+	add esp, 12
+	mov ecx, screen
+	call _print_line
+	mov eax, 3000
+	call _sleep ;tasteful sleep
+
+	; Load world
+	push world_len
+	push world
+	push world_file
+	call _load_file
+	add esp, 12
+
+	; Load level
+	push 2048
+	push lvl_buff
+	push lvl
+	call _load_file
+	add esp, 12
 
 	jmp	_game_loop
 
-; put dd in eax
-_print_f:
-	pusha
-
-	push	ebp
-	mov	ebp, esp
+;eax: key to be read
+_read_input:	
+	push eax
+	call GetAsyncKeyState
 	
-	push	eax
-	push	dword fmtStr
-	call	printf
-	add	esp, 12
-	mov	eax, 0
+	test eax, 80000000h ;Tests to see if msb is set (key is down)
+	jz .notequal
+	mov eax, 1
 
-	popa
-	ret
-
-_open_input:
-
-	pusha
-	mov	eax, 5
-	mov	ebx, input
-	mov	ecx, 4000
-	int	0x80
-
-	mov	[key_in], eax
-	
-	mov	eax, 3
-	mov	ebx, [key_in]
-	mov	ecx, key_buf
-	mov 	edx, 32
-	int	0x80
-
-	mov	eax, 0
-	mov	ax, word [key_buf + 26]
-	mov	[key], ax
-	
-	popa
-	ret
-
-_read_input:
-	pusha	
-
-	mov	eax, 3
-	mov	ebx, [key_in]
-	mov	ecx, key_buf
-	mov 	edx, 32
-	int	0x80
-
-	mov	eax, 0
-	mov	ax, word [key_buf + 26]
-	mov	[key], ax
-	
-	popa
+.notequal:
 	ret
 
 
 ; MAIN GAME LOOP
 _game_loop:
 
-	mov	eax, 0
-	mov	ebx, 5000000
+	mov	eax, 5
 	call	_sleep
 
 	mov	eax, [render_cyc]
@@ -274,7 +239,7 @@ _game_loop:
 	loop	.clear_loop
 
 	mov	eax, [score]
-	call	_print_f
+	call	_print_score
 
 	mov	eax, [spawn_cyc]
 	add	[spawn_cyc], dword 1
@@ -325,47 +290,48 @@ _game_loop:
 	call	_render
 
 .do_keys:
-	; read user input from /dev/input/event
-	call	_read_input
-
-	; put key code into eax
-	mov	eax, 0
-	mov	ax, [key]
-
 	; Apply controls
 
 	; if ESC down exit game
+	mov eax, 0x1b
+	call _read_input
 	cmp	eax, 1
 	je	_sys_exit			
 	
-	mov	ebx, 0
-	mov	bl, byte [keys]
-	cmp	eax, ebx
+	mov eax, 0
+	mov al, byte [keys]
+	call _read_input
+	cmp	eax, 1
 	je	.key0
 
-	mov	ebx, 0
-	mov	bl, byte [keys + 1]
-	cmp	eax, ebx
+	mov eax, 0
+	mov al, byte [keys + 1]
+	call _read_input
+	cmp	eax, 1
 	je	.key1
 
-	mov	ebx, 0
-	mov	bl, byte [keys + 2]
-	cmp	eax, ebx
+	mov eax, 0
+	mov al, byte [keys + 2]
+	call _read_input
+	cmp	eax, 1
 	je	.key2
 
-	mov	ebx, 0
-	mov	bl, byte [keys + 3]
-	cmp	eax, ebx
+	mov eax, 0
+	mov al, byte [keys + 3]
+	call _read_input
+	cmp	eax, 1
 	je	.key3
 
-	mov	ebx, 0
-	mov	bl, byte [keys + 4]
-	cmp	eax, ebx
+	mov eax, 0
+	mov al, byte [keys + 4]
+	call _read_input
+	cmp	eax, 1
 	je	.key4
 
-	mov	ebx, 0
-	mov	bl, byte [keys + 5]
-	cmp	eax, ebx
+	mov eax, 0
+	mov al, byte [keys + 5]
+	call _read_input
+	cmp	eax, 1
 	je	.key5
 
 	jmp	.end_key_eval
@@ -408,17 +374,13 @@ _game_loop:
 ; put sec in eax, and usec in ebx	
 _sleep:
 	pusha
-	mov	dword [t_sec], eax
-	mov	dword [t_usec], ebx
 
-	mov	eax, 0xA2
-	mov	ebx, timeval
-	mov	ecx, 0
-	int	0x80
+	push eax
+	call Sleep
+
 	popa
 	ret
 
 _sys_exit:
-	mov	eax, 1
-	mov	ebx, 0
-	int	0x80
+	push 0
+	call _exit

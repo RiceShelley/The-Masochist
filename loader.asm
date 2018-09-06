@@ -1,87 +1,43 @@
 ; load world from file
-_load_world:
-	pusha
-	mov	eax, 5
-	mov	ebx, world_file	
-	mov	ecx, 0
-	int	0x80
-	
-	mov	[fd_in], eax
-	mov	eax, 3
-	mov	ebx, [fd_in]
-	mov	ecx, world
-	mov	edx, 6000
-	int	0x80
-
-	mov	eax, 6
-	mov	ebx, [fd_in]
-	int	0x80
-	popa
-	ret
-
-_load_lvl:
-	pusha
-
-	mov	eax, 5
-	mov	ebx, lvl
-	mov	ecx, 0
-	int	0x80
-	
-	mov	[fd_in], eax
-	mov	eax, 3
-	mov	ebx, [fd_in]
-	mov	ecx, lvl_buff
-	mov	edx, 2048
-	int	0x80
-
-	mov	eax, 6
-	mov	ebx, [fd_in]
-	int	0x80
-
-	popa
-	ret
+extern _fopen, _fclose, _fgets, _strlen
 
 _scroll_src:
-	pusha
+	pushad
 
-	mov	eax, 5
-	mov	ebx, src0
-	mov	ecx, 0
-	int	0x80
-	
+	;fopen()
+	push open_type
+	push src0
+	call _fopen
+	add esp, 8
+
+	;If error opening file, bail
+	cmp eax, 0
+	je  .end
+
+	;fd_in = ret
 	mov	[fd_in], eax
-	mov	eax, 3
-	mov	ebx, [fd_in]
-	mov	ecx, buff
-	mov	edx, 32768
-	int	0x80
 
-	mov	eax, 6
-	mov	ebx, [fd_in]
-	int	0x80
+.loop:
+	;fgets()
+	mov eax, [fd_in]
+	push eax
+	push 32768
+	push buff
+	call _fgets
+	add esp, 12
+
+	;If error reading the file, bail
+	cmp eax, 0
+	je  .end
 
 	; output src line by line	
-	mov	edi, buff
-.loop:
-	mov	eax, 4
-	mov	ebx, 1
-	mov	ecx, edi
-	mov	edx, 1
-	int	0x80
+	mov ecx, buff
+	call _print_line
 
-	add	edi, 1
-	
-	cmp	[edi], byte 0
-	je	.end
-
-	cmp	[edi], byte 0xA
-	je	.do_sleep
-
-	jmp	.loop
+	jmp .do_sleep
 
 .do_sleep:
-	mov	eax, 0
-	mov	ebx, 10000000
+	mov	eax, 10
 	call	_sleep
 	loop	.loop
 
@@ -91,36 +47,67 @@ _scroll_src:
 	call	_new_line
 	loop	.loop2
 
-	popa
+	;fclose()
+	mov eax, [fd_in]
+	push eax
+	call _fclose
+	add esp, 4
+
+	popad
 	ret
 
-_load_start_screen:
-	pusha
+;Load a file into a variable
+;arg1: filename
+;arg2: output variable
+;arg3: output variable size
+_load_file:
+	;Establish stack frame
+	push ebp
+	mov ebp, esp
+	pushad
 
-	mov	eax, 5
-	mov	ebx, logo
-	mov	ecx, 0
-	int	0x80
-	
+	push open_type
+	push dword [ebp + 8]
+	call _fopen
+	add esp, 8
 	mov	[fd_in], eax
-	mov	eax, 3
-	mov	ebx, [fd_in]
-	mov	ecx, screen
-	mov	edx, 6000
-	int	0x80
+	;No error checking.
+	;If we can't load something here we have bigger problems
 
-	mov	eax, 6
-	mov	ebx, [fd_in]
-	int	0x80
-	
-	mov	ecx, screen
-	mov	edx, world_len
-	call	_print_line
+	mov ebx, 0 ;loop count
+.loadline: ;Load a line into the buffer until we've read arg3 characters
+	;fgets()
+	mov eax, dword [ebp + 16]
+	sub eax, ebx ;eax = var_size - read
+	mov ecx, dword [ebp + 12]
+	add ecx, ebx ;add to target pointer so we append to current output
+	push dword [fd_in]
+	push eax
+	push ecx
+	call _fgets
+	add esp, 12
 
-	mov	eax, 3
-	mov	ebx, 0
-	call	_sleep
-	
-	popa
+	cmp eax, 0	;eof: done loading
+	je .doneloading
+
+	;ebx += strlen(screen)
+	push eax
+	call _strlen
+	add esp, 4
+	add ebx, eax
+
+	jmp .loadline
+
+.doneloading:
+	;fclose()
+	mov eax, [fd_in]
+	push eax
+	call _fclose
+	add esp, 4
+
+	;Restore stack frame
+	popad
+	mov esp, ebp
+	pop ebp
+
 	ret
-	
