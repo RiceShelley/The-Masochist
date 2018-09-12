@@ -107,8 +107,6 @@ restart_end:
 
 	mov	[score], dword 0
 
-	call	_new_line
-
 .pscore_end:
 
 	mov	eax, 4
